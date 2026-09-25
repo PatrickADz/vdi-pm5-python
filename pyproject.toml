@@ -1,0 +1,14 @@
+[project]
+name = "vdi-pm5"
+version = "1.1.0"
+description = "Driver Python para power meter VDI Erickson PM5 (mm/submm)"
+authors = [{ name = "PatrickADz" }]
+requires-python = ">=3.8"
+dependencies = ["pyserial>=3.5"]
+
+[project.scripts]
+vdi-pm5 = "vdi_pm5.cli:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
