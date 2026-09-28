@@ -190,12 +190,7 @@ class PM5:
         return float(resp[1:].decode("ascii").strip())
 
     def stream_power(self, n: Optional[int] = None, poll_interval: float = 0.0) -> Iterator[PowerReading]:
-        """Generator that polls '?D1' repeatedly and yields PowerReading objects.
-
-        Note: polling uses individual '?D1' queries instead of the PM5 native 'DS'
-        mode, which pushes samples without request and is harder to interleave with
-        other commands safely.
-        """
+        """Generator that polls '?D1' repeatedly and yields PowerReading objects."""
         count = 0
         while n is None or count < n:
             yield self.get_power()

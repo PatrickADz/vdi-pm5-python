@@ -12,6 +12,7 @@ Inside the shell (prompt "pm5>"):
     version: query firmware version
     range <code> [hold]: set the range (1-4 fixed, 5-8 auto; 'hold' enables range hold)
     hires: high-resolution power reading
+    log <file.h5> [seconds] [n] -> continuous reading with HDF5 storage
     connect [port]: (re)connect; autodetects if port is omitted
     status: show current port/connection status
     help [command]: help
@@ -25,6 +26,7 @@ import logging
 
 from .driver import PM5
 from .exceptions import PM5Error
+from .storage import Hdf5PowerLogger
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +162,46 @@ class PM5Shell(cmd.Cmd):
             print(f"{mw:.6e} mW")
         except PM5Error as exc:
             print(f"Error: {exc}")
+
+    def do_log(self, arg: str) -> None:
+        """log <file.h5> [seconds] [n]  ->  continuous reading saved to HDF5.
+
+        seconds: sampling interval (default 1.0).
+        n: number of samples to take; if omitted, it runs indefinitely
+           until Ctrl+C. If the file already exists, samples are appended
+           to the end (it is not overwritten).
+        """
+        pm5 = self._require_pm5()
+        if not pm5:
+            return
+        parts = arg.split()
+        if not parts:
+            print("Usage: log <file.h5> [seconds] [n]")
+            return
+        path = parts[0]
+        try:
+            interval = float(parts[1]) if len(parts) > 1 else 1.0
+            n = int(parts[2]) if len(parts) > 2 else None
+        except ValueError:
+            print("Invalid arguments. Usage: log <file.h5> [seconds] [n]")
+            return
+
+        print(f"Recording to {path} every {interval}s"
+              + (f" ({n} samples)" if n else " (Ctrl+C to stop)") + " ...")
+        count = 0
+        try:
+            with Hdf5PowerLogger(path, sensor_serial=pm5.target_serial) as logger:
+                for r in pm5.stream_power(n=n, poll_interval=interval):
+                    logger.append(r)
+                    count += 1
+                    print(f"\r{count:6d} samples | latest: {r.watts * 1e6:9.3f} uW "
+                          f"({r.dbm:7.2f} dBm)", end="", flush=True)
+        except KeyboardInterrupt:
+            pass
+        except PM5Error as exc:
+            print(f"\nError: {exc}")
+        finally:
+            print(f"\nDone. {count} samples saved to {path}.")
 
     def do_exit(self, arg: str) -> bool:
         """exit  ->  close the connection and leave the shell."""

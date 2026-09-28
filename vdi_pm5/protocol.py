@@ -75,7 +75,6 @@ QUERY_ONE_SAMPLE = (b"D", b"1")
 QUERY_STREAM = (b"D", b"S")
 
 # High-resolution power query (last page of Appendix One):
-# it is a fixed 4-byte sequence, NOT the usual !/? 8-byte format.
 HIGH_RES_QUERY = bytes([38, 1, 2, 37])
 HIGH_RES_OK = 0x55
 HIGH_RES_ERROR = 0xAB
