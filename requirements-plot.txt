@@ -1,0 +1,4 @@
+# Optional: only needed once live/saved plotting is wired in.
+# Install with: pip install -r requirements-plot.txt
+-r requirements.txt
+matplotlib>=3.5

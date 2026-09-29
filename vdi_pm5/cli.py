@@ -3,6 +3,7 @@
 Usage:
     python -m vdi_pm5.cli
     python -m vdi_pm5.cli --port COM5
+    python -m vdi_pm5.cli --config pm5_config.yaml
     python -m vdi_pm5.cli --port COM5 --verbose
 
 Inside the shell (prompt "pm5>"):
@@ -15,6 +16,8 @@ Inside the shell (prompt "pm5>"):
     log <file.h5> [seconds] [n] -> continuous reading with HDF5 storage
     connect [port]: (re)connect; autodetects if port is omitted
     status: show current port/connection status
+    config show: display the currently loaded configuration
+    config init [path]: write a commented example config file (default: pm5_config.yaml)
     help [command]: help
     exit / quit / Ctrl+D: exit
 """
@@ -23,7 +26,9 @@ from __future__ import annotations
 import argparse
 import cmd
 import logging
+from pathlib import Path
 
+from .config import ConfigError, PM5Config, write_example
 from .driver import PM5
 from .exceptions import PM5Error
 from .storage import Hdf5PowerLogger
@@ -35,16 +40,55 @@ class PM5Shell(cmd.Cmd):
     intro = "PM5 shell. Type 'help' to see the available commands.\n"
     prompt = "pm5> "
 
-    def __init__(self, port: str | None = None, baudrate: int = PM5.DEFAULT_BAUDRATE):
+    def __init__(
+        self,
+        port: str | None = None,
+        baudrate: int = PM5.DEFAULT_BAUDRATE,
+        config: PM5Config | None = None,
+    ):
         super().__init__()
+        self.config = config
+        # A port given explicitly on the CLI always wins and skips the
+        # config's stored-port comparison/prompt entirely.
+        self._port_from_cli = port is not None
         self.port = port
-        self.baudrate = baudrate
+        self.baudrate = baudrate if baudrate != PM5.DEFAULT_BAUDRATE else (
+            config.instrument.get("baudrate", PM5.DEFAULT_BAUDRATE) if config else PM5.DEFAULT_BAUDRATE
+        )
         self.pm5: PM5 | None = None
         self._try_connect(startup=True)
 
+    # -- internal helpers -------------------------------------------------
+    def _confirm_port_change(self, configured: str, detected: str) -> bool:
+        answer = input(
+            f"PM5 was detected on port {detected}, which differs from the "
+            f"registered value ({configured}). Connect to {detected}? [y/N] "
+        )
+        return answer.strip().lower() in ("y", "yes")
+
     def _try_connect(self, startup: bool = False) -> None:
         try:
-            self.pm5 = PM5(port=self.port, baudrate=self.baudrate)
+            target_serial = self.config.instrument.get("serial_number", "347VA") if self.config else "347VA"
+            target_manufacturer = self.config.instrument.get("manufacturer", "FTDI") if self.config else "FTDI"
+
+            if self._port_from_cli or self.config is None:
+                # Explicit --port, or a manual `connect <port>`: use it as-is
+                # (None here just means "autodetect", no config involved).
+                resolved_port = self.port
+            else:
+                from .config import resolve_port
+
+                probe = PM5(port=None, baudrate=self.baudrate, target_serial=target_serial,
+                            target_manufacturer=target_manufacturer, auto_connect=False)
+                detected = probe.find_port()
+                resolved_port = resolve_port(self.config, detected, confirm=self._confirm_port_change)
+
+            self.pm5 = PM5(
+                port=resolved_port,
+                baudrate=self.baudrate,
+                target_serial=target_serial,
+                target_manufacturer=target_manufacturer,
+            )
             self.port = self.pm5.port
             print(f"Connected on {self.port}.")
         except PM5Error as exc:
@@ -73,6 +117,29 @@ class PM5Shell(cmd.Cmd):
             print(f"Connected on {self.port} (baudrate={self.baudrate}).")
         else:
             print("No active connection.")
+        print(f"Config file: {self.config.path}" if self.config and self.config.path else "Config file: none (using built-in defaults)")
+
+    def do_config(self, arg: str) -> None:
+        """config show  ->  display the currently loaded configuration.
+        config init [path]  ->  write a commented example config file (default: pm5_config.yaml)."""
+        parts = arg.split()
+        sub = parts[0] if parts else ""
+        if sub == "show":
+            if self.config is None:
+                print("No config file loaded; running with built-in defaults.")
+                return
+            import json
+            print(f"Config file: {self.config.path}")
+            print(json.dumps(self.config.data, indent=2, default=str))
+        elif sub == "init":
+            target = parts[1] if len(parts) > 1 else "pm5_config.yaml"
+            if Path(target).exists():
+                print(f"{target} already exists; not overwriting.")
+                return
+            write_example(target)
+            print(f"Wrote example config to {target}.")
+        else:
+            print("Usage: config show | config init [path]")
 
     def do_power(self, arg: str) -> None:
         """power  ->  read power once."""
@@ -227,8 +294,10 @@ class PM5Shell(cmd.Cmd):
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="vdi-pm5", description="Interactive shell for a VDI Erickson PM5")
-    parser.add_argument("--port", default=None, help="Serial port (autodetected if omitted)")
+    parser.add_argument("--port", default=None, help="Serial port (overrides config; autodetected if omitted)")
     parser.add_argument("--baudrate", type=int, default=PM5.DEFAULT_BAUDRATE)
+    parser.add_argument("--config", default=None, metavar="PATH",
+                         help="Path to a YAML config file (instrument/measurement/display/output/metadata)")
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser
 
@@ -239,7 +308,16 @@ def main(argv=None) -> int:
         level=logging.DEBUG if args.verbose else logging.WARNING,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
-    PM5Shell(port=args.port, baudrate=args.baudrate).cmdloop()
+
+    config = None
+    if args.config:
+        try:
+            config = PM5Config.load(args.config)
+        except ConfigError as exc:
+            print(f"Config error: {exc}")
+            return 1
+
+    PM5Shell(port=args.port, baudrate=args.baudrate, config=config).cmdloop()
     return 0
 
 

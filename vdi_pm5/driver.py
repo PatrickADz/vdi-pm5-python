@@ -5,7 +5,7 @@ NOTES:
 This driver allows communication with a VDI Erickson PM5 power meter
 using USB communication.
 
-version 1.1 Sept 2026
+version 1.2 Sept 2026
 """
 from __future__ import annotations
 

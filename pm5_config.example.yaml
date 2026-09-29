@@ -1,0 +1,42 @@
+# PM5 configuration file.
+# Precedence: CLI arguments > this file > built-in defaults.
+
+instrument:
+  serial_number: "347VA"      # sensor head serial number, used for autodetection
+  manufacturer: "FTDI"        # USB chip manufacturer string used for autodetection
+  port: null                  # e.g. "COM5"; null = always autodetect, never persisted
+  on_port_change: ask         # ask | use_detected | fail
+  baudrate: 115200
+  timeout: 1.0
+
+measurement:
+  interval_s: 1.0             # seconds between samples
+  duration_s: null            # stop after this many seconds (null = unlimited)
+  n_samples: null             # stop after this many samples (null = unlimited)
+  initial_range: null         # 1-8; requires the front-panel switch on "Remote"
+  range_hold: false
+  zero_on_start: false        # only zero with the RF source off and connected to the DUT
+
+display:
+  units: dBm                  # uW | mW | dBm
+  plot: false                 # live plot while measuring
+  window_s: 60                # seconds visible in the live plot before it scrolls
+  y_scale: auto                # auto | log
+  refresh_hz: 5                # plot redraw rate (independent of the sampling rate)
+
+output:
+  save: true
+  formats: [h5]                 # h5, csv (both can be listed)
+  directory: "./data"
+  filename_template: "{date}_{time}_{name}"
+  save_plot: false              # save a plot image when the measurement ends
+  save_plot_scope: window       # window (last window_s only) | full (entire run)
+  plot_format: png
+  dpi: 150
+
+metadata:
+  operator: null
+  source_frequency_ghz: null
+  taper_band: null
+  dut: null
+  notes: null
